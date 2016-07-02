@@ -14,6 +14,10 @@ class GeneratePoCommand extends SymfonyCommand
 {
     protected $fileSystem;
 
+    protected $langFileHeader;
+
+    protected $projectName;
+
     /**
      * @param Filesystem|void $filesystem
      *
@@ -37,6 +41,7 @@ class GeneratePoCommand extends SymfonyCommand
 
         $this->addArgument('langPath', InputArgument::OPTIONAL, 'Languages path');
         $this->addArgument('savePath', InputArgument::OPTIONAL, 'Save files to path');
+        $this->addArgument('projectName', InputArgument::OPTIONAL, 'Project name');
     }
 
     /**
@@ -58,39 +63,33 @@ class GeneratePoCommand extends SymfonyCommand
      */
     protected function execute(InputInterface $input, OutputInterface $output)
     {
+        $this->projectName = $input->getArgument('projectName') ?: '';
         $langPath = $input->getArgument('langPath') ?: __DIR__.'/languages/native';
         $savePath = $input->getArgument('savePath') ?: $langPath;
 
         $langPath = realpath($langPath);
         $savePath = realpath($savePath);
 
+        $this->setLangFileHeader();
+
         $langDirs = $this->fileSystem->directories($langPath);
 
         foreach ($langDirs as $langDir) {
+            $langFileContent = $this->langFileHeader;
             $files = $this->fileSystem->files($langDir);
 
             foreach ($files as $file) {
-                $fileContent = $this->generateFileContent($file);
-
-                $this->fileSystem->put($savePath . "/" . basename($langDir) . ".po", $fileContent);
+                $langFileContent .= $this->generateFileContent($file);
             }
+
+            $this->fileSystem->put($savePath . "/" . $this->projectName . "-" . basename($langDir) . ".po", $langFileContent);
         }
 
         $output->writeln("Application languages generated set!");
     }
 
     protected function generateFileContent($file) {
-        $fileContent = "Project-Id-Version: {plugin name}\n".
-                            "Content-Type: text/plain; charset=UTF-8\n".
-                            "X-Poedit-SourceCharset: utf-8\n".
-                            "X-Poedit-KeywordsList: __;_e;__ngettext:1,2;_c\n".
-                            "X-Poedit-Basepath: ../..\n".
-                            "Plural-Forms: nplurals=1; plural=0;\n".
-                            "X-Poedit-SearchPath-0: {plugin name}\n";
-        $fileContent .= "#\n";
-        $fileContent .= "msgid \"\"\n";
-        $fileContent .= "msgstr \"\"\n";
-
+        $fileContent = "#\n";
         $langKeys = @require_once $file;
 
         if (!is_array($langKeys)) {
@@ -120,5 +119,15 @@ class GeneratePoCommand extends SymfonyCommand
         }
 
         return $fileContent;
+    }
+
+    public function setLangFileHeader() {
+        $this->langFileHeader = "Project-Id-Version: {$this->projectName}\n".
+                            "Content-Type: text/plain; charset=UTF-8\n".
+                            "X-Poedit-SourceCharset: utf-8\n".
+                            "X-Poedit-KeywordsList: __;_e;__ngettext:1,2;_c\n".
+                            "X-Poedit-Basepath: ../..\n".
+                            "Plural-Forms: nplurals=1; plural=0;\n".
+                            "X-Poedit-SearchPath-0: {$this->projectName}\n";
     }
 }
