@@ -21,19 +21,19 @@ class TranslateCommand extends SymfonyCommand
     protected $viewsPath;
 
     /**
-    * @param Filesystem|void $filesystem
-    * @return string
-    */
+     * @param Filesystem|void $filesystem
+     *
+     * @return string
+     */
     public function __construct(Filesystem $filesystem = null)
     {
-        $this->filesystem = $filesystem ?: (new Filesystem);
+        $this->filesystem = $filesystem ?: (new Filesystem());
 
         parent::__construct();
     }
 
     /**
      * Configures the current command.
-     * @return void
      */
     protected function configure()
     {
@@ -46,14 +46,13 @@ class TranslateCommand extends SymfonyCommand
     }
 
     /**
-     * langDir property setter
+     * langDir property setter.
      *
      * @param string $langDir
-     * @return    void
      */
     public function setLangDir($langDir)
     {
-        $langDir = $langDir ?: __DIR__."/languages/native/en_US/";
+        $langDir = $langDir ?: __DIR__.'/languages/native/en_US/';
         if (!$this->filesystem->exists($langDir)) {
             throw new \Exception("Lang directory not found `{$langDir}`!");
         }
@@ -62,15 +61,14 @@ class TranslateCommand extends SymfonyCommand
     }
 
     /**
-     * langFile property setter
+     * langFile property setter.
      *
-     * @param     string $langFile
-     * @return    void
+     * @param string $langFile
      */
     public function setLangFile($langFile)
     {
-        $langFile = $langFile ?: "dashboard.php";
-        if (!$this->filesystem->exists($this->langDir."/".$langFile)) {
+        $langFile = $langFile ?: 'dashboard.php';
+        if (!$this->filesystem->exists($this->langDir.'/'.$langFile)) {
             throw new \Exception("Default lang file not found `{$this->langDir}/{$langFile}`!");
         }
 
@@ -78,14 +76,13 @@ class TranslateCommand extends SymfonyCommand
     }
 
     /**
-     * viewsPath property setter
+     * viewsPath property setter.
      *
-     * @param     string $viewsPath
-     * @return    void
+     * @param string $viewsPath
      */
     protected function setViewsPath($viewsPath)
     {
-        $viewsPath = $viewsPath ?: __DIR__."/public/views";
+        $viewsPath = $viewsPath ?: __DIR__.'/public/views';
         if (!$this->filesystem->exists($viewsPath)) {
             throw new \Exception("Views directory not found `{$viewsPath}`!");
         }
@@ -116,12 +113,12 @@ class TranslateCommand extends SymfonyCommand
         $this->setLangFile($input->getArgument('langFile'));
         $this->setViewsPath($input->getArgument('viewsPath'));
 
-        $langFileName = explode(".", $this->langFile)[0];
-        $langFileContent = (array) @require $this->langDir."/".$this->langFile;
+        $langFileName = explode('.', $this->langFile)[0];
+        $langFileContent = (array) @require $this->langDir.'/'.$this->langFile;
         $viewFiles = Finder::create()
                     ->in($this->viewsPath)
-                    ->name("*.html")
-                    ->name("*.php")
+                    ->name('*.html')
+                    ->name('*.php')
                     ->files();
 
         foreach ($viewFiles as $file) {
@@ -135,26 +132,33 @@ class TranslateCommand extends SymfonyCommand
 
             if ($matches !== false) {
                 foreach ($matches as $match) {
-                    if ( trim($match[1]) == '' ) continue;
+                    $firstMatch = trim($match[1]);
 
-                    if (strpos(trim($match[1]), " ") == false && strpos(trim($match[1]), ".") > 0)
-                    {
-                        $this->transMatchExistentKey($match);
+                    if ($firstMatch == '') {
+                        continue;
+                    }
+                    if ($this->langContainVariable($firstMatch)) {
+                        echo sprintf("Skipped variable inside a key `%s` in file `%s`.%s", $firstMatch, $file->getRealPath(), PHP_EOL);
+                        continue;
+                    }
+
+                    if (strpos($firstMatch, ' ') == false && strpos($firstMatch, '.') > 0) {
+                        $this->transMatchExistentKey($firstMatch);
                     } else {
-                        $langKey = Str::slug($match[1]);
+                        $langKey = Str::slug($firstMatch);
 
                         if (
                             isset($langFileContent[$langKey]) &&
-                            $langFileContent[$langKey] !== $match[1]
+                            $langFileContent[$langKey] !== $firstMatch
                         ) {
-                            echo $langKey . " - " . $match[1] . PHP_EOL;
-                            $langKey = $langKey . "-" . rand(0, 100);
+                            $langKey = $langKey . '-' . time();
+                            echo $langKey.' - '.$firstMatch.PHP_EOL;
                         }
 
-                        $langFileContent[$langKey] = $match[1];
+                        $langFileContent[$langKey] = $firstMatch;
                         $fileContent = preg_replace(
-                            '/H::trans\(["|\']'. $match[1] .'["|\']\)/',
-                            "H::trans('". $langFileName .".". $langKey ."')",
+                            '/H::trans\(["|\']'.$firstMatch.'["|\']\)/',
+                            "H::trans('".$langFileName.'.'.$langKey."')",
                             $fileContent
                         );
                     }
@@ -169,44 +173,62 @@ class TranslateCommand extends SymfonyCommand
             $this->buildLangFileContent($langFileContent, true, true)
         );
 
-        $output->writeln("Done translating!");
+        $output->writeln('Done translating!');
+    }
+
+    /**
+     * Test if the language key contain a PHP variable.
+     *
+     * @param     string $langKey
+     * @return    bool
+     */
+    protected function langContainVariable($langKey)
+    {
+        preg_match_all(
+            '/\$[a-z_]\w*/',
+            $langKey,
+            $matches,
+            PREG_SET_ORDER
+        );
+
+        return !!$matches;
     }
 
     /**
      * Regex match value is a lang key. This method will verify
-     * and add the new key if necessary
+     * and add the new key if necessary.
      *
-     * @param     array $match
-     * @return    void
+     * @param array $match
      */
-    protected function transMatchExistentKey(array $match)
+    protected function transMatchExistentKey($match)
     {
-        list($matchLang, $matchLangKey) = explode(".", $match[1]);
-        $matchLangFilename = $this->langDir."/".$matchLang.".php";
+        list($matchLang, $matchLangKey) = explode('.', $match);
+        $matchLangFilename = $this->langDir.'/'.$matchLang.'.php';
 
         $matchLangFileContent = [];
         if ($this->filesystem->exists($matchLangFilename)) {
-            $matchLangFileContent = (array) @require $this->langDir."/".$matchLang.".php";
+            $matchLangFileContent = (array) @require $this->langDir.'/'.$matchLang.'.php';
         }
 
         if (!isset($matchLangFileContent[$matchLangKey])) {
-            $matchLangFileContent[$matchLangKey] = "";
+            $matchLangFileContent[$matchLangKey] = '';
         }
 
         $this->filesystem->put($matchLangFilename, $this->buildLangFileContent($matchLangFileContent, true, true));
     }
 
     /**
-     * Create the literal string to be stroed from an array
+     * Create the literal string to be stroed from an array.
+     *
      * @param array $content
-     * @param bool $fillValues Whether to keep values or add them empty.
-     * @param bool $tag Add PHP tags around array content.
+     * @param bool  $fillValues Whether to keep values or add them empty.
+     * @param bool  $tag        Add PHP tags around array content.
+     *
      * @return string
      */
     protected function buildLangFileContent(array $content, $fillValues = false, $tag = false)
     {
-        if ($tag)
-        {
+        if ($tag) {
             $str = "<?php\nreturn [\n\t";
         } else {
             $str = "[\n\t";
@@ -227,11 +249,10 @@ class TranslateCommand extends SymfonyCommand
                 $str .= "\t'{$key}' => '{$value}',\n";
             }
         }
-        if ($tag)
-        {
-            $str .= "];";
+        if ($tag) {
+            $str .= '];';
         } else {
-            $str .= "]";
+            $str .= ']';
         }
 
         return $str;
